@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto', sans-serif; }
+        h1, h2, h3, .score-font { font-family: 'Oswald', sans-serif; }
+        .stat-row:nth-child(even) { background-color: rgba(255,255,255,0.05); }
+        
+        /* YEŞİL SAHA ARKA PLANI */
+        .pitch-bg {
+            background-color: #022c22;
+            background-image: 
+                radial-gradient(circle at 50% 50%, #14532d 0%, #022c22 100%),
+                linear-gradient(0deg, rgba(255,255,255,0.08) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+        }
+        
+        /* Özel Scrollbar */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #064e3b; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #15803d; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #16a34a; }
+        
+        /* Animasyonlar */
+        .score-clickable { cursor: pointer; transition: all 0.3s ease; }
+        .score-active { opacity: 1; transform: scale(1); text-shadow: 0 0 20px rgba(250, 204, 21, 0.6); }
+        .score-inactive { opacity: 0.5; transform: scale(0.9); }
+        .score-inactive:hover { opacity: 0.8; }
+        .animate-pulse-text { animation: pulse-text 2s infinite; }
+        @keyframes pulse-text { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+        
+        /* Loader */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-left-color: #eab308;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            word-wrap: break-word; 
+        }
+
+        /* Özel Dropdown Stili */
+        #customDropdownList {
+            scrollbar-width: thin;
+            scrollbar-color: #15803d #064e3b;
+        }
+        
+        /* AI Text Styling */
+        #aiText b, #aiText strong {
+            color: #facc15; /* Yellow-400 */
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="pitch-bg min-h-screen text-white flex flex-col md:flex-row overflow-hidden relative">
+
+    <!-- ÖZEL DİL SEÇİMİ (Resimli Bayraklar) -->
+    <div class="absolute top-4 right-4 z-50">
+        <div class="relative group">
+            <button onclick="toggleLanguageDropdown()" id="langBtn" class="flex items-center justify-center w-16 h-12 bg-green-900/90 border-4 border-white rounded-lg hover:bg-green-800 transition-colors shadow-lg overflow-hidden">
+                <img src="https://flagcdn.com/w40/gb.png" alt="EN" class="w-8 h-auto">
+            </button>
+            <div id="customDropdownList" class="hidden absolute right-0 mt-2 w-20 max-h-80 overflow-y-auto bg-green-950 border-4 border-white rounded-lg shadow-xl z-50 flex-col gap-1 p-1">
+                <!-- JS ile doldurulacak -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SOL PANEL: Maç Geçmişi -->
+    <aside class="w-full md:w-80 bg-green-950/90 border-b-4 md:border-b-0 md:border-r-4 border-white flex flex-col h-48 md:h-screen flex-shrink-0 z-20">
+        <div class="p-4 border-b-4 border-white bg-green-900/50 shadow-md mt-12 md:mt-0">
+            <h3 class="text-yellow-400 font-bold uppercase tracking-wider flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span data-i18n="historyTitle">Recent Matches</span>
+            </h3>
+        </div>
+        <div id="historyList" class="flex-1 overflow-y-auto custom-scroll p-2 space-y-2">
+            <div class="text-green-300/50 text-sm text-center italic mt-10" data-i18n="emptyHistory">No matches played yet.</div>
+        </div>
+    </aside>
+
+    <!-- SAĞ PANEL: Ana Simülatör -->
+    <main class="flex-1 flex items-center justify-center p-4 overflow-y-auto h-[calc(100vh-12rem)] md:h-screen relative w-full pt-16 md:pt-4">
+        
+        <!-- Ana Kart -->
+        <div class="w-full max-w-2xl bg-green-900/80 backdrop-blur-md rounded-2xl shadow-2xl border-4 border-white my-auto">
+            
+            <!-- Üst Panel -->
+            <div class="p-6 border-b-4 border-white bg-green-900/50">
+                <h1 class="text-2xl text-center text-yellow-400 mb-6 tracking-wide uppercase" data-i18n="appTitle">Match Simulator</h1>
+                
+                <div class="flex flex-col sm:flex-row gap-4 items-center justify-center relative">
+                    <!-- Input Çerçeveleri -->
+                    <input type="text" id="teamAInput" placeholder="Home Team" data-i18n-placeholder="homePlaceholder"
+                        class="w-full sm:w-1/3 bg-green-800 border-4 border-white text-white placeholder-green-400 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-3 text-center outline-none transition-all">
+                    
+                    <span onclick="swapTeams()" title="Swap / Değiştir ⇄"
+                        class="text-green-400 font-bold text-xl cursor-pointer hover:text-yellow-400 hover:scale-125 transition-all transform active:scale-95 select-none z-10 p-2"
+                        role="button" aria-label="Swap Teams">
+                        VS
+                    </span>
+                    
+                    <input type="text" id="teamBInput" placeholder="Away Team" data-i18n-placeholder="awayPlaceholder"
+                        class="w-full sm:w-1/3 bg-green-800 border-4 border-white text-white placeholder-green-400 text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-3 text-center outline-none transition-all">
+                </div>
+
+                <div class="mt-6 text-center">
+                    <button onclick="generateMatch()" 
+                        class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-8 rounded-full shadow-lg shadow-yellow-900/50 transition-all transform hover:scale-105 active:scale-95 uppercase tracking-wider"
+                        data-i18n="generateBtn">
+                        GENERATE
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sonuç Alanı -->
+            <div id="resultArea" class="hidden opacity-0 transition-opacity duration-500">
+                
+                <div class="bg-gradient-to-r from-green-900 via-green-800 to-green-900 p-8 pb-10 text-center relative overflow-hidden select-none">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent opacity-50"></div>
+                    
+                    <div id="statsModeLabel" class="absolute top-2 left-1/2 transform -translate-x-1/2 text-[10px] text-yellow-400/70 animate-pulse-text tracking-wide font-medium opacity-0 transition-opacity w-full text-center"></div>
+
+                    <div class="flex justify-between items-center max-w-lg mx-auto relative z-10 mt-2">
+                        <div class="text-center w-[40%] px-1 flex items-center justify-center min-h-[3rem]">
+                            <h2 id="displayTeamA" class="text-xl sm:text-3xl font-bold line-clamp-2 leading-tight transition-all duration-300">Team A</h2>
+                        </div>
+                        
+                        <div class="text-center w-[20%] flex flex-col items-center justify-center relative">
+                            <div id="ftScoreContainer" onclick="switchStatsMode('ft')" class="score-clickable score-active group">
+                                <div class="score-font text-4xl sm:text-5xl font-bold text-white drop-shadow-lg whitespace-nowrap flex items-center justify-center gap-1">
+                                    <span id="scoreA">0</span>
+                                    <span class="mx-1 opacity-70">-</span>
+                                    <span id="scoreB">0</span>
+                                </div>
+                                <div class="h-1 w-0 bg-yellow-500 mx-auto transition-all group-hover:w-full rounded-full opacity-50"></div>
+                            </div>
+                        </div>
+
+                        <div class="text-center w-[40%] px-1 flex items-center justify-center min-h-[3rem]">
+                            <h2 id="displayTeamB" class="text-xl sm:text-3xl font-bold line-clamp-2 leading-tight transition-all duration-300">Team B</h2>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center relative z-10 mt-4">
+                        <div id="htScoreContainer" onclick="switchStatsMode('ht')" class="score-clickable score-inactive group relative">
+                            <!-- HT Border tam beyaz -->
+                            <div class="text-xs text-green-300 uppercase tracking-widest flex items-center gap-2 justify-center bg-green-950/50 px-3 py-1 rounded-full border-4 border-white whitespace-nowrap">
+                                <span data-i18n="htLabel">Half Time</span>: <span id="htScore" class="text-yellow-400 font-bold text-sm">0-0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- İstatistikler -->
+                <div class="p-4 sm:p-6 bg-green-800 transition-all duration-300" id="statsContainer">
+                    <div class="space-y-3 text-sm sm:text-base">
+                        <!-- Stat Rows -->
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="shotsA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="totalShots">Total Shots</span>
+                            <span id="shotsB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="targetA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="shotsOnTarget">Shots on Target</span>
+                            <span id="targetB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="posA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">%50</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="possession">Possession</span>
+                            <span id="posB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">%50</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="passesA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="passes">PASSES / COMPLETED</span>
+                            <span id="passesB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <div class="w-24 text-center"><span id="passRateA" class="block text-xs font-bold text-yellow-400 whitespace-nowrap">%0</span></div>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="passRate">Pass Accuracy</span>
+                            <div class="w-24 text-center"><span id="passRateB" class="block text-xs font-bold text-yellow-400 whitespace-nowrap">%0</span></div>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="cornerA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="corners">Corners</span>
+                            <span id="cornerB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="crossA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="crosses">CROSSES / COMPLETED</span>
+                            <span id="crossB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="foulA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="fouls">Fouls</span>
+                            <span id="foulB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <div class="w-24 flex justify-center gap-1 whitespace-nowrap">
+                                <div class="bg-yellow-500 text-yellow-900 text-xs font-bold px-1.5 rounded" id="yellowA">0</div>
+                                <div class="bg-red-600 text-white text-xs font-bold px-1.5 rounded hidden" id="redA">0</div>
+                            </div>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="cards">Cards (Y/R)</span>
+                            <div class="w-24 flex justify-center gap-1 whitespace-nowrap">
+                                <div class="bg-yellow-500 text-yellow-900 text-xs font-bold px-1.5 rounded" id="yellowB">0</div>
+                                <div class="bg-red-600 text-white text-xs font-bold px-1.5 rounded hidden" id="redB">0</div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center stat-row py-2 px-2 rounded">
+                            <span id="offsideA" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                            <span class="text-green-200 uppercase text-xs flex-1 text-center" data-i18n="offsides">Offsides</span>
+                            <span id="offsideB" class="font-bold w-24 text-center text-yellow-300 whitespace-nowrap">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GEMINI AI SECTION -->
+                <div class="bg-green-900 border-t-4 border-white p-4 sm:p-6 rounded-b-2xl">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <button onclick="generateCommentary()" class="w-full bg-gradient-to-r from-blue-800 to-blue-600 hover:from-blue-700 hover:to-blue-500 text-white font-bold py-4 px-4 rounded-xl border-b-[6px] border-blue-900 active:border-b-0 active:translate-y-[6px] transition-all flex items-center justify-center gap-2 shadow-xl group">
+                            <span class="text-xl">✨</span>
+                            <span data-i18n="aiCommentaryBtn">Generate Match Commentary</span>
+                        </button>
+                        
+                        <button onclick="generateManagerReaction()" class="w-full bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 text-white font-bold py-4 px-4 rounded-xl border-b-[6px] border-red-900 active:border-b-0 active:translate-y-[6px] transition-all flex items-center justify-center gap-2 shadow-xl group">
+                            <span class="text-xl">🎙️</span>
+                            <span data-i18n="managerReactionBtn">Manager Reaction</span>
+                        </button>
+                    </div>
+                    
+                    <div id="aiContentArea" class="hidden">
+                        <div id="aiLoading" class="flex flex-col items-center justify-center py-4 space-y-3 hidden">
+                            <div class="loader"></div>
+                            <p id="aiLoadingText" class="text-sm text-green-300 animate-pulse">Processing...</p>
+                        </div>
+                        <div id="aiText" class="bg-green-950/50 p-4 rounded-xl text-green-100 text-sm leading-relaxed border-4 border-white min-h-[100px] whitespace-pre-wrap"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const apiKey = ""; 
+
+        // Gazeteci Veritabanı
+        const journalists = [
+            {"country":"Büyük Britanya","broadcaster":"Sky Sports","name":"James Holloway"},
+            {"country":"Türkiye","broadcaster":"beIN Sports Türkiye","name":"Emre Kaan Yıldırım"},
+            {"country":"Türkiye","broadcaster":"TRT1","name":"Uğur Karakullukçu"},
+            {"country":"İspanya","broadcaster":"Movistar Deportes","name":"Alejandro Ruiz"},
+            {"country":"Fransa","broadcaster":"Canal+ Sport","name":"Mathieu Laurent"},
+            {"country":"İsviçre","broadcaster":"SRF Sport","name":"Lukas Meier"},
+            {"country":"Arjantin","broadcaster":"TyC Sports","name":"Federico Álvarez"},
+            {"country":"Uruguay","broadcaster":"VTV Uruguay","name":"Martín Pereyra"},
+            {"country":"Brezilya","broadcaster":"SporTV","name":"Rafael Nogueira"},
+            {"country":"Kazakistan","broadcaster":"Qazsport","name":"Nursultan Bekov"},
+            {"country":"Azerbaycan","broadcaster":"İdman TV","name":"Elvin Mammadov"},
+            {"country":"Suudi Arabistan","broadcaster":"SSC Sports","name":"Fahad Al-Harbi"},
+            {"country":"Katar","broadcaster":"beIN Sports","name":"Khalid Al-Thani"},
+            {"country":"Fas","broadcaster":"Arryadia","name":"Youssef El Amrani"},
+            {"country":"Cezayir","broadcaster":"TV6 Algérie","name":"Karim Benali"},
+            {"country":"Nijerya","broadcaster":"SuperSport Nigeria","name":"Chinedu Okafor"},
+            {"country":"Güney Afrika Cumhuriyeti","broadcaster":"SuperSport","name":"Thabo Mokoena"},
+            {"country":"ABD","broadcaster":"ESPN","name":"Michael Anderson"},
+            {"country":"Meksika","broadcaster":"TUDN","name":"José Luis Hernández"},
+            {"country":"Kolombiya","broadcaster":"Win Sports","name":"Andrés Calderón"},
+            {"country":"Ekvador","broadcaster":"GolTV Ecuador","name":"Diego Paredes"},
+            {"country":"Şili","broadcaster":"TNT Sports Chile","name":"Sebastián Rojas"},
+            {"country":"Peru","broadcaster":"Movistar Deportes Perú","name":"Carlos Huamán"},
+            {"country":"Kanada","broadcaster":"TSN","name":"Daniel McLeod"},
+            {"country":"İran","broadcaster":"IRIB Varzesh","name":"Reza Hosseini"},
+            {"country":"Almanya","broadcaster":"Sky Deutschland","name":"Tobias Schneider"},
+            {"country":"İtalya","broadcaster":"Sky Sport Italia","name":"Marco Bianchi"},
+            {"country":"Portekiz","broadcaster":"Sport TV","name":"João Ferreira"},
+            {"country":"Rusya","broadcaster":"Match TV","name":"Dmitri Ivanov"},
+            {"country":"Çin","broadcaster":"CCTV-5","name":"Zhang Wei"},
+            {"country":"Japonya","broadcaster":"NHK Sports","name":"Takumi Sato"},
+            {"country":"Güney Kore","broadcaster":"SPOTV","name":"Kim Min-jae"},
+            {"country":"Mısır","broadcaster":"ON Time Sports","name":"Ahmed Hassan"},
+            {"country":"Polonya","broadcaster":"Canal+ Sport Polska","name":"Piotr Kowalczyk"},
+            {"country":"Ukrayna","broadcaster":"Setanta Sports Ukraine","name":"Oleksandr Shevchenko"},
+            {"country":"Macaristan","broadcaster":"M4 Sport","name":"Ádám Szabó"},
+            {"country":"Romanya","broadcaster":"Digi Sport","name":"Andrei Popescu"},
+            {"country":"Avusturya","broadcaster":"ORF Sport","name":"Lukas Gruber"},
+            {"country":"Yunanistan","broadcaster":"Cosmote Sport","name":"Nikos Papadopoulos"},
+            {"country":"Danimarka","broadcaster":"TV2 Sport","name":"Mikkel Rasmussen"},
+            {"country":"Hırvatistan","broadcaster":"HRT Sport","name":"Ivan Kovačević"},
+            {"country":"Sırbistan","broadcaster":"Arena Sport","name":"Marko Jovanović"},
+            {"country":"Bosna Hersek","broadcaster":"Arena Sport BiH","name":"Emir Hadžić"},
+            {"country":"Bulgaristan","broadcaster":"Diema Sport","name":"Georgi Dimitrov"},
+            {"country":"Hindistan","broadcaster":"Star Sports India","name":"Arjun Malhotra"},
+            {"country":"Avrupa","broadcaster":"Eurosport","name":"Ali Ural Altay"},
+            {"country":"Avrupa","broadcaster":"Sport Klub","name":"Tolga Halil Altay"}
+        ];
+
+        const languageFlags = {
+            en: "gb", tr: "tr", es: "es", fr: "fr", de: "de", it: "it", pt: "pt", ru: "ru", zh: "cn", ja: "jp", ko: "kr", ar: "sa", fa: "ir", pl: "pl", ro: "ro", el: "gr", da: "dk", hr: "hr", sr: "rs", bs: "ba", bg: "bg", az: "az", zu: "za"
+        };
+
+        const teamDatabase = {
+            "galatasaray": { p: "#A90432", s: "#FDB912" }, "fenerbahçe": { p: "#002d72", s: "#f4e04d" }, "beşiktaş": { p: "#000000", s: "#ffffff" }, "trabzonspor": { p: "#810025", s: "#3bb4e7" }, "bursaspor": { p: "#127b3e", s: "#ffffff" }, "başakşehir": { p: "#e47321", s: "#132549" }, "sivasspor": { p: "#ed1c24", s: "#ffffff" }, "göztepe": { p: "#ffce00", s: "#ed1c24" }, "konyaspor": { p: "#006737", s: "#ffffff" }, "antalyaspor": { p: "#ed1c24", s: "#ffffff" }, "eskişehirspor": { p: "#000000", s: "#ed1c24" }, "samsunspor": { p: "#cc0000", s: "#ffffff" }, "kocaelispor": { p: "#005536", s: "#000000" }, "sakaryaspor": { p: "#005536", s: "#000000" }, "adanademirspor": { p: "#002d72", s: "#3bb4e7" }, "ankaragücü": { p: "#002d72", s: "#f4e04d" }, "kayserispor": { p: "#ffce00", s: "#ed1c24" }, "gaziantep": { p: "#000000", s: "#ed1c24" }, "rize": { p: "#005536", s: "#3bb4e7" }, "malatya": { p: "#f4e04d", s: "#000000" }, 
+            "arsenal": { p: "#EF0107", s: "#FFFFFF" }, "aston villa": { p: "#670E36", s: "#95BFE5" }, "chelsea": { p: "#034694", s: "#FFFFFF" }, "everton": { p: "#003399", s: "#FFFFFF" }, "liverpool": { p: "#C8102E", s: "#FFFFFF" }, "man city": { p: "#6CABDD", s: "#FFFFFF" }, "manchester city": { p: "#6CABDD", s: "#FFFFFF" }, "man utd": { p: "#DA291C", s: "#FBE122" }, "manchester united": { p: "#DA291C", s: "#FBE122" }, "newcastle": { p: "#241F20", s: "#FFFFFF" }, "spurs": { p: "#FFFFFF", s: "#132257" }, "tottenham": { p: "#FFFFFF", s: "#132257" }, "west ham": { p: "#7A263A", s: "#1BB1E7" }, "leeds": { p: "#FFFFFF", s: "#FFCD00" }, "leicester": { p: "#0053A0", s: "#FFFFFF" }, 
+            "barcelona": { p: "#A50044", s: "#004D98" }, "real madrid": { p: "#FFFFFF", s: "#414141" }, "atletico": { p: "#CB3524", s: "#FFFFFF" }, "atletico madrid": { p: "#CB3524", s: "#FFFFFF" }, "sevilla": { p: "#FFFFFF", s: "#D4001F" }, "valencia": { p: "#FFFFFF", s: "#000000" }, "villarreal": { p: "#FBE122", s: "#00529F" }, "bilbao": { p: "#EE2523", s: "#FFFFFF" }, "betis": { p: "#0BB661", s: "#FFFFFF" }, 
+            "juventus": { p: "#000000", s: "#FFFFFF" }, "milan": { p: "#FB090B", s: "#000000" }, "ac milan": { p: "#FB090B", s: "#000000" }, "inter": { p: "#010E80", s: "#000000" }, "roma": { p: "#8E1F2F", s: "#F0BC42" }, "napoli": { p: "#12A0D7", s: "#FFFFFF" }, "lazio": { p: "#87D8F7", s: "#FFFFFF" }, "fiorentina": { p: "#4F2E7F", s: "#FFFFFF" }, "atalanta": { p: "#1F2F57", s: "#000000" }, 
+            "bayern": { p: "#DC052D", s: "#FFFFFF" }, "bayern munich": { p: "#DC052D", s: "#FFFFFF" }, "dortmund": { p: "#FDE100", s: "#000000" }, "leverkusen": { p: "#E32221", s: "#000000" }, "leipzig": { p: "#DD0741", s: "#FFFFFF" }, "schalke": { p: "#004D9D", s: "#FFFFFF" }, "hamburg": { p: "#002878", s: "#FFFFFF" }, "stuttgart": { p: "#FFFFFF", s: "#E32221" }, "werder bremen": { p: "#1D9053", s: "#FFFFFF" }, 
+            "psg": { p: "#004171", s: "#DA291C" }, "marseille": { p: "#FFFFFF", s: "#009DDC" }, "lyon": { p: "#FFFFFF", s: "#1D3E7F" }, "lille": { p: "#E01E13", s: "#151F4E" }, "monaco": { p: "#E71D2D", s: "#FFFFFF" }, 
+            "ajax": { p: "#FFFFFF", s: "#D2122E" }, "psv": { p: "#DA0E22", s: "#FFFFFF" }, "feyenoord": { p: "#FFFFFF", s: "#DE1E26" }, "benfica": { p: "#E83034", s: "#FFFFFF" }, "porto": { p: "#00428C", s: "#FFFFFF" }, "sporting": { p: "#068243", s: "#FFFFFF" }, "celtic": { p: "#018749", s: "#FFFFFF" }, "rangers": { p: "#1B458F", s: "#FFFFFF" }, "boca": { p: "#003D95", s: "#F7B805" }, "river plate": { p: "#FFFFFF", s: "#D2122E" } 
+        };
+        const randomColorPalette = [ {p: "#FF0000", s: "#FFFFFF"}, {p: "#0000FF", s: "#FFFFFF"}, {p: "#008000", s: "#FFFFFF"}, {p: "#FFFF00", s: "#000000"}, {p: "#000000", s: "#FFFFFF"}, {p: "#FFA500", s: "#000000"}, {p: "#800080", s: "#FFFFFF"}, {p: "#00FFFF", s: "#000000"}, {p: "#800000", s: "#87CEEB"}, {p: "#000080", s: "#FFFF00"}, {p: "#FFC0CB", s: "#000000"}, {p: "#808080", s: "#FFFFFF"} ];
+
+        const translations = {
+            en: { appTitle: "Match Simulator", historyTitle: "Recent Matches", emptyHistory: "No matches played yet.", homePlaceholder: "Home Team", awayPlaceholder: "Away Team", generateBtn: "GENERATE", ftLabel: "FULL TIME", htLabel: "Half Time", htModeLabel: "HALF TIME", clickHint: "(Click scores to toggle statistics)", totalShots: "Total Shots", shotsOnTarget: "Shots on Target", passes: "PASSES / COMPLETED", passRate: "Pass Accuracy", corners: "Corners", crosses: "CROSSES / COMPLETED", fouls: "Fouls", cards: "Cards (Yellow/Red)", offsides: "Offsides", aiCommentaryBtn: "Generate Match Commentary", managerReactionBtn: "Manager Reaction", aiLoadingCommentary: "Writing match story...", aiLoadingManager: "Getting press conference...", possession: "POSSESSION" },
+            tr: { appTitle: "Maç Simülatörü", historyTitle: "Son Maçlar", emptyHistory: "Henüz maç oynanmadı.", homePlaceholder: "Ev Sahibi (Örn: Galatasaray)", awayPlaceholder: "Deplasman (Örn: Fenerbahçe)", generateBtn: "OLUŞTUR", ftLabel: "MAÇ SONUCU", htLabel: "İlk Yarı", htModeLabel: "İLK YARI", clickHint: "(İstatistikleri değiştirmek için skorlara tıklayın)", totalShots: "Toplam Şut", shotsOnTarget: "İsabetli Şut", passes: "PAS / İSABETLİ", passRate: "Pas Başarı Oranı", corners: "Korner", crosses: "ORTA / İSABETLİ", fouls: "Faul", cards: "Kartlar (Sarı/Kırmızı)", offsides: "Ofsayt", aiCommentaryBtn: "✨ Maç Yorumu Oluştur", managerReactionBtn: "🎙️ Teknik Direktör Açıklaması", aiLoadingCommentary: "Maç hikayesi yazılıyor...", aiLoadingManager: "Basın toplantısı hazırlanıyor...", possession: "TOPA SAHİP OLMA" },
+            da: { appTitle: "Kampsimulator", historyTitle: "Seneste Kampe", emptyHistory: "Ingen kampe spillet endnu.", homePlaceholder: "Hjemmehold", awayPlaceholder: "Udehold", generateBtn: "GENERER", ftLabel: "FULDTID", htLabel: "Halvleg", htModeLabel: "HALVLEG", clickHint: "(Klik på stillingen for at skifte statistik)", totalShots: "Skud i alt", shotsOnTarget: "Skud på mål", passes: "AFLEVERINGER / KOMP.", passRate: "Afleveringspræcision", corners: "Hjørnespark", crosses: "INDLÆG / KOMP.", fouls: "Frispark", cards: "Kort (Gul/Rød)", offsides: "Offside", aiCommentaryBtn: "Generer Kampkommentar", managerReactionBtn: "Trænerreaktion", aiLoadingCommentary: "Skriver kamphistorie...", aiLoadingManager: "Henter udtalelse...", possession: "BOLDBESIDDELSE" },
+            fr: { appTitle: "Simulateur de Match", historyTitle: "Derniers Matchs", emptyHistory: "Aucun match joué.", homePlaceholder: "Équipe Domicile", awayPlaceholder: "Équipe Extérieure", generateBtn: "GÉNÉRER", ftLabel: "FIN DU MATCH", htLabel: "Mi-temps", htModeLabel: "MI-TEMPS", clickHint: "(Cliquez sur le score pour voir les stats)", totalShots: "Tirs Totaux", shotsOnTarget: "Tirs Cadrés", passes: "PASSES / RÉUSSIES", passRate: "Précision Passes", corners: "Corners", crosses: "CENTRES / RÉUSSIES", fouls: "Fautes", cards: "Cartons (J/R)", offsides: "Hors-jeu", aiCommentaryBtn: "Générer un Commentaire", managerReactionBtn: "Réaction de l'Entraîneur", aiLoadingCommentary: "Écriture de l'histoire...", aiLoadingManager: "Obtention de la déclaration...", possession: "POSSESSION" },
+            de: { appTitle: "Spielsimulator", historyTitle: "Letzte Spiele", emptyHistory: "Noch keine Spiele.", homePlaceholder: "Heimmannschaft", awayPlaceholder: "Auswärtsmannschaft", generateBtn: "GENERIEREN", ftLabel: "ENDERGEBNIS", htLabel: "Halbzeit", htModeLabel: "HALBZEIT", clickHint: "(Klicken Sie auf den Spielstand für Statistiken)", totalShots: "Schüsse Gesamt", shotsOnTarget: "Schüsse aufs Tor", passes: "PÄSSE / ANK.", passRate: "Passgenauigkeit", corners: "Ecken", crosses: "FLANKEN / ANK.", fouls: "Fouls", cards: "Karten (Gelb/Rot)", offsides: "Abseits", aiCommentaryBtn: "Spielbericht Erstellen", managerReactionBtn: "Trainerstimme", aiLoadingCommentary: "Schreibe Spielbericht...", aiLoadingManager: "Hole Trainerstimme...", possession: "BALLBESITZ" },
+            it: { appTitle: "Simulatore di Partita", historyTitle: "Partite Recenti", emptyHistory: "Nessuna partita giocata.", homePlaceholder: "Squadra di Casa", awayPlaceholder: "Squadra Ospite", generateBtn: "GENERA", ftLabel: "RISULTATO FINALE", htLabel: "Primo Tempo", htModeLabel: "PRIMO TEMPO", clickHint: "(Clicca sul punteggio per le statistiche)", totalShots: "Tiri Totali", shotsOnTarget: "Tiri in Porta", passes: "PASSAGGI / COM.", passRate: "Precisione Passaggi", corners: "Angoli", crosses: "CROSS / COM.", fouls: "Falli", cards: "Cartellini (Giallo/Rosso)", offsides: "Fuorigioco", aiCommentaryBtn: "Genera Commento", managerReactionBtn: "Reazione Allenatore", aiLoadingCommentary: "Scrivendo la storia...", aiLoadingManager: "Ottenendo dichiarazione...", possession: "POSSESSO PALLA" },
+            es: { appTitle: "Simulador de Partido", historyTitle: "Partidos Recientes", emptyHistory: "No hay partidos aún.", homePlaceholder: "Equipo Local", awayPlaceholder: "Equipo Visitante", generateBtn: "GENERAR", ftLabel: "FINAL DEL PARTIDO", htLabel: "Medio Tiempo", htModeLabel: "MEDIO TIEMPO", clickHint: "(Haga clic en el marcador para ver estadísticas)", totalShots: "Tiros Totales", shotsOnTarget: "Tiros a Puerta", passes: "PASES / COM.", passRate: "Precisión de Pases", corners: "Córners", crosses: "CENTROS / COM.", fouls: "Faltas", cards: "Tarjetas (Amarilla/Roja)", offsides: "Fueras de Juego", aiCommentaryBtn: "Generar Comentario", managerReactionBtn: "Reacción del Entrenador", aiLoadingCommentary: "Escribiendo historia...", aiLoadingManager: "Obteniendo declaración...", possession: "POSESIÓN" },
+            pt: { appTitle: "Simulador de Jogo", historyTitle: "Jogos Recentes", emptyHistory: "Nenhum jogo ainda.", homePlaceholder: "Time da Casa", awayPlaceholder: "Time Visitante", generateBtn: "GERAR", ftLabel: "FIM DE JOGO", htLabel: "Intervalo", htModeLabel: "INTERVALO", clickHint: "(Clique no placar para ver estatísticas)", totalShots: "Total de Chutes", shotsOnTarget: "Chutes no Gol", passes: "PASSES / COMP.", passRate: "Precisão de Passe", corners: "Escanteios", crosses: "CRUZAMENTOS / COMP.", fouls: "Faltas", cards: "Cartões (A/V)", offsides: "Impedimentos", aiCommentaryBtn: "Gerar Comentário", managerReactionBtn: "Reação do Técnico", aiLoadingCommentary: "Escrevendo história...", aiLoadingManager: "Obtendo declaração...", possession: "POSSE DE BOLA" },
+            ru: { appTitle: "Симулятор Матча", historyTitle: "Последние Матчи", emptyHistory: "Матчей пока нет.", homePlaceholder: "Хозяева", awayPlaceholder: "Гости", generateBtn: "СОЗДАТЬ", ftLabel: "КОНЕЦ МАТЧА", htLabel: "Первый Тайм", htModeLabel: "ПЕРВЫЙ ТАЙМ", clickHint: "(Нажмите на счет для статистики)", totalShots: "Всего Ударов", shotsOnTarget: "В Створ", passes: "ПАСЫ / ТОЧН.", passRate: "Точность Пасов", corners: "Угловые", crosses: "НАВЕСЫ / ТОЧН.", fouls: "Фолы", cards: "Карточки (Ж/К)", offsides: "Офсайды", aiCommentaryBtn: "Создать комментарий", managerReactionBtn: "Реакция Тренера", aiLoadingCommentary: "Пишу историю...", aiLoadingManager: "Получение интервью...", possession: "ВЛАДЕНИЕ МЯЧОМ" },
+            zh: { appTitle: "比赛模拟器", historyTitle: "近期比赛", emptyHistory: "暂无比赛。", homePlaceholder: "主队", awayPlaceholder: "客队", generateBtn: "生成", ftLabel: "全场结束", htLabel: "半场", htModeLabel: "半场", clickHint: "(点击比分查看统计)", totalShots: "射门总数", shotsOnTarget: "射正", passes: "传球 / 成功", passRate: "传球成功率", corners: "角球", crosses: "传中 / 成功", fouls: "犯规", cards: "红黄牌", offsides: "越位", aiCommentaryBtn: "生成比赛解说", managerReactionBtn: "教练反应", aiLoadingCommentary: "正在编写故事...", aiLoadingManager: "正在获取采访...", possession: "控球率" },
+            ja: { appTitle: "試合シミュレーター", historyTitle: "最近の試合", emptyHistory: "試合はまだありません。", homePlaceholder: "ホームチーム", awayPlaceholder: "アウェイチーム", generateBtn: "生成する", ftLabel: "試合終了", htLabel: "前半", htModeLabel: "前半", clickHint: "(スコアをクリックして統計を切り替え)", totalShots: "シュート数", shotsOnTarget: "枠内シュート", passes: "パス数 / 成功", passRate: "パス成功率", corners: "コーナー", crosses: "クロス / 成功", fouls: "ファウル", cards: "カード (黄/赤)", offsides: "オフサイド", aiCommentaryBtn: "試合解説を生成", managerReactionBtn: "監督のコメント", aiLoadingCommentary: "記事を執筆中...", aiLoadingManager: "コメントを取得中...", possession: "支配率" },
+            ko: { appTitle: "경기 시뮬레이터", historyTitle: "최근 경기", emptyHistory: "아직 경기가 없습니다.", homePlaceholder: "홈 팀", awayPlaceholder: "원정 팀", generateBtn: "생성", ftLabel: "경기 종료", htLabel: "전반전", htModeLabel: "전반전", clickHint: "(통계를 보려면 점수를 클릭하세요)", totalShots: "총 슈팅", shotsOnTarget: "유효 슈팅", passes: "패스 / 성공", passRate: "패스 성공률", corners: "코너킥", crosses: "크로스 / 성공", fouls: "파울", cards: "카드 (경고/퇴장)", offsides: "오프사이드", aiCommentaryBtn: "경기 해설 생성", managerReactionBtn: "감독 반응", aiLoadingCommentary: "기사 작성 중...", aiLoadingManager: "인터뷰 준비 중...", possession: "점유율" },
+            ar: { appTitle: "محاكي المباراة", historyTitle: "المباريات الأخيرة", emptyHistory: "لم يتم لعب مباريات بعد.", homePlaceholder: "صاحب الأرض", awayPlaceholder: "الضيف", generateBtn: "توليد", ftLabel: "نهاية المباراة", htLabel: "الشوط الأول", htModeLabel: "الشوط الأول", clickHint: "(اضغط على النتيجة للإحصائيات)", totalShots: "إجمالي التسديدات", shotsOnTarget: "تسديدات على المرمى", passes: "التمريرات / ناجحة", passRate: "دقة التمرير", corners: "الركنيات", crosses: "العرضيات / ناجحة", fouls: "الأخطاء", cards: "البطاقات (أصفر/أحمر)", offsides: "تسلل", aiCommentaryBtn: "إنشاء تعليق", managerReactionBtn: "رد فعل المدرب", aiLoadingCommentary: "كتابة القصة...", aiLoadingManager: "الحصول على التصريح...", possession: "الاستحواذ" },
+            fa: { appTitle: "شبیه‌ساز مسابقه", historyTitle: "بازی‌های اخیر", emptyHistory: "هنوز بازی انجام نشده.", homePlaceholder: "میزبان", awayPlaceholder: "میهمان", generateBtn: "تولید", ftLabel: "پایان بازی", htLabel: "نیمه اول", htModeLabel: "نیمه اول", clickHint: "(برای آمار روی نتیجه کلیک کنید)", totalShots: "کل شوت‌ها", shotsOnTarget: "شوت در چارچوب", passes: "پاس‌ها / دقیق", passRate: "دقت پاس", corners: "کرنرها", crosses: "سانترها / دقیق", fouls: "خطاها", cards: "کارت‌ها (زرد/قرمز)", offsides: "آفساید", aiCommentaryBtn: "تولید گزارش", managerReactionBtn: "واکنش سرمربی", aiLoadingCommentary: "نوشتن داستان...", aiLoadingManager: "دریافت مصاحبه...", possession: "مالکیت توپ" },
+            pl: { appTitle: "Symulator Meczu", historyTitle: "Ostatnie Mecze", emptyHistory: "Brak meczów.", homePlaceholder: "Gospodarze", awayPlaceholder: "Goście", generateBtn: "GENERUJ", ftLabel: "KONIEC MECZU", htLabel: "Do Przerwy", htModeLabel: "DO PRZERWY", clickHint: "(Klikni wynik, aby zobaczyć statystyki)", totalShots: "Strzały", shotsOnTarget: "Celne Strzały", passes: "PODANIA / CELNE", passRate: "Celność Podań", corners: "Rzuty Rożne", crosses: "DOŚRODKOWANIA / CELNE", fouls: "Faule", cards: "Kartki (Żółte/Czerwone)", offsides: "Spalone", aiCommentaryBtn: "Generuj Komentarz", managerReactionBtn: "Reakcja Trenera", aiLoadingCommentary: "Pisanie historii...", aiLoadingManager: "Pobieranie wypowiedzi...", possession: "POSIADANIE PIŁKI" },
+            ro: { appTitle: "Simulator de Meci", historyTitle: "Meciuri Recente", emptyHistory: "Niciun meci încă.", homePlaceholder: "Gazde", awayPlaceholder: "Oaspeți", generateBtn: "GENEREAZĂ", ftLabel: "FINAL", htLabel: "Pauză", htModeLabel: "PAUZĂ", clickHint: "(Click pe scor pentru statistici)", totalShots: "Șuturi Totale", shotsOnTarget: "Pe Poartă", passes: "PASE / PREC.", passRate: "Precizie Pase", corners: "Cornere", crosses: "CENTRĂRI / PREC.", fouls: "Faulturi", cards: "Cartonașe (G/R)", offsides: "Ofsaiduri", aiCommentaryBtn: "Generează Comentariu", managerReactionBtn: "Reacția Antrenorului", aiLoadingCommentary: "Scrierea poveștii...", aiLoadingManager: "Obținerea declarației...", possession: "POSESIE" },
+            hr: { appTitle: "Simulator Utakmice", historyTitle: "Nedavne Utakmice", emptyHistory: "Nema utakmica.", homePlaceholder: "Domaćin", awayPlaceholder: "Gost", generateBtn: "GENERIRAJ", ftLabel: "KRAJ", htLabel: "Poluvrijeme", htModeLabel: "POLUVRIJEME", clickHint: "(Klikni na rezultat za statistiku)", totalShots: "Udarci", shotsOnTarget: "U okvir", passes: "DODAVANJA / TOČ.", passRate: "Točnost dodavanja", corners: "Korneri", crosses: "CENTARŠUTEVI / TOČ.", fouls: "Prekršaji", cards: "Kartoni (Ž/C)", offsides: "Zaleđa", aiCommentaryBtn: "Generiraj Komentar", managerReactionBtn: "Reakcija Trenera", aiLoadingCommentary: "Pisanje izvještaja...", aiLoadingManager: "Dohvaćanje izjave...", possession: "POSJED LOPTE" },
+            sr: { appTitle: "Симулатор Утакмице", historyTitle: "Недавне Утакмице", emptyHistory: "Нема утакмица.", homePlaceholder: "Домаћин", awayPlaceholder: "Гост", generateBtn: "ГЕНЕРИШИ", ftLabel: "КРАЈ", htLabel: "Полувреме", htModeLabel: "ПОЛУВРЕМЕ", clickHint: "(Кликни на резултат за статистику)", totalShots: "Шутеви", shotsOnTarget: "У оквир", passes: "ДОДАВАЊА / ТАЧ.", passRate: "Тачност", corners: "Корнери", crosses: "ЦЕНТАРШУТЕВИ / ТАЧ.", fouls: "Фаулови", cards: "Картони (Ж/Ц)", offsides: "Офсајди", aiCommentaryBtn: "Генериши Коментар", managerReactionBtn: "Реакција Тренера", aiLoadingCommentary: "Писање извештаја...", aiLoadingManager: "Добијање изјаве...", possession: "ПОСЕД ЛОПТЕ" },
+            bs: { appTitle: "Simulator Utakmice", historyTitle: "Nedavne Utakmice", emptyHistory: "Nema utakmica.", homePlaceholder: "Domaćin", awayPlaceholder: "Gost", generateBtn: "GENERIRAJ", ftLabel: "KRAJ", htLabel: "Poluvrijeme", htModeLabel: "POLUVRIJEME", clickHint: "(Klikni na rezultat za statistiku)", totalShots: "Šutevi", shotsOnTarget: "U okvir", passes: "DODAVANJA / TOČ.", passRate: "Tačnost", corners: "Korneri", crosses: "CENTARŠUTEVI / TAČ.", fouls: "Prekršaji", cards: "Kartoni (Ž/C)", offsides: "Ofsajdi", aiCommentaryBtn: "Generiši Komentar", managerReactionBtn: "Reakcija Trenera", aiLoadingCommentary: "Pisanje izvještaja...", aiLoadingManager: "Dohvaćanje izjave...", possession: "POSJED LOPTE" },
+            bg: { appTitle: "Симулатор на Мач", historyTitle: "Последни Мачове", emptyHistory: "Няма мачове.", homePlaceholder: "Домакин", awayPlaceholder: "Гост", generateBtn: "ГЕНЕРИРАНЕ", ftLabel: "КРАЕН РЕЗУЛТАТ", htLabel: "Първо Полувреме", htModeLabel: "ПЪРВО ПОЛУВРЕМЕ", clickHint: "(Кликнете върху резултата за статистика)", totalShots: "Общо Удари", shotsOnTarget: "Точни Удари", passes: "ПАСОВЕ / ТОЧ.", passRate: "Точност на пасовете", corners: "Корнери", crosses: "ЦЕНТРИРАНИЯ / ТОЧ.", fouls: "Фаулове", cards: "Картони (Жълт/Червен)", offsides: "Засади", aiCommentaryBtn: "Генериране на коментар", managerReactionBtn: "Реакция на треньора", aiLoadingCommentary: "Писане на историята...", aiLoadingManager: "Вземане на изявление...", possession: "ПРИТЕЖАНИЕ НА ТОПКАТА" },
+            el: { appTitle: "Προσομοιωτής Αγώνα", historyTitle: "Πρόσφατοι Αγώνες", emptyHistory: "Δεν υπάρχουν αγώνες.", homePlaceholder: "Γηπεδούχος", awayPlaceholder: "Φιλοξενούμενος", generateBtn: "ΔΗΜΙΟΥΡΓΙΑ", ftLabel: "ΤΕΛΙΚΟ", htLabel: "Ημίχρονο", htModeLabel: "ΗΜΙΧΡΟΝΟ", clickHint: "(Κάντε κλικ στο σκορ για στατιστικά)", totalShots: "Συνολικά Σουτ", shotsOnTarget: "Σουτ στο Στόχο", passes: "ΠΑΣΕΣ / ΑΚΡ.", passRate: "Ακρίβεια Πασών", corners: "Κόρνερ", crosses: "ΣΕΝΤΡΕΣ / ΑΚΡ.", fouls: "Φάουλ", cards: "Κάρτες (Κίτρινες/Κόκκινες)", offsides: "Οφσάιντ", aiCommentaryBtn: "Δημιουργία Σχολιασμού", managerReactionBtn: "Αντίδραση Προπονητή", aiLoadingCommentary: "Γράφοντας την ιστορία του αγώνα...", aiLoadingManager: "Λήψη δήλωσης...", possession: "ΚΑΤΟΧΗ ΜΠΑΛΑΣ" },
+            az: { appTitle: "Matç Simulyatoru", historyTitle: "Son Oyunlar", emptyHistory: "Hələ oyun keçirilməyib.", homePlaceholder: "Ev Sahibi", awayPlaceholder: "Qonaq", generateBtn: "YARAT", ftLabel: "OYUN SONUCU", htLabel: "İlk Hissə", htModeLabel: "İLK HİSSƏ", clickHint: "(Statistika üçün hesaba klikləyin)", totalShots: "Ümumi Zərbə", shotsOnTarget: "Dəqiq Zərbə", passes: "PASLAR / DƏQ.", passRate: "Pas Dəqiqliyi", corners: "Künc Zərbəsi", crosses: "ASMA / DƏQ.", fouls: "Fol", cards: "Vərəqələr (S/Q)", offsides: "Oyundankənar", aiCommentaryBtn: "Matç Şərhi Yarat", managerReactionBtn: "Məşqçi Reaksiyası", aiLoadingCommentary: "Oyun hekayəsi yazılır...", aiLoadingManager: "Açıqlama alınır...", possession: "TOPA SAHİB OLMA" },
+            zu: { appTitle: "Isilingisi Somdlalo", historyTitle: "Imidlalo Yakamuva", emptyHistory: "Ayikho imidlalo okwamanje.", homePlaceholder: "Ekhaya", awayPlaceholder: "Ekuhambeni", generateBtn: "QALA", ftLabel: "ISIKHATHI ESIGCWELE", htLabel: "Isiwombe Sokuqala", htModeLabel: "ISIWOMBE SOKUQALA", clickHint: "(Chofoza amaphuzu ukuze uthole izibalo)", totalShots: "Amashothi Ephelele", shotsOnTarget: "Amashothi Aqondile", passes: "AMAPHASI / QON.", passRate: "Ukunemba Kwephasi", corners: "Amakhona", crosses: "IZIPHAMBANO / QON.", fouls: "Amaphutha", cards: "Amakhadi (Phuzi/Bomvu)", offsides: "Offsides", aiCommentaryBtn: "Dala Ukuhlaziywa", managerReactionBtn: "Ukusabela Komqeqeshi", aiLoadingCommentary: "Kubhalwa indaba...", aiLoadingManager: "Isitatimende siyalandwa...", possession: "UKUBAMBA IBHOLA" }
+        };
+
+        ['pt', 'ru', 'ja', 'ko', 'zh', 'az', 'pl', 'hr', 'sr', 'bs', 'bg', 'el', 'ro', 'ar', 'fa', 'zu'].forEach(lang => {
+            if (!translations[lang]) { translations[lang] = { ...translations['en'] }; }
+        });
+
+        let currentLang = 'en'; 
+        let matchHistory = [];
+        let currentMatch = null;
+        let currentMode = 'ft';
+
+        function initDropdown() {
+            const dropdownList = document.getElementById('customDropdownList');
+            dropdownList.innerHTML = '';
+            
+            Object.keys(languageFlags).forEach(code => {
+                const item = document.createElement('div');
+                item.className = 'px-2 py-2 hover:bg-green-800 cursor-pointer text-center transition-colors flex items-center justify-center';
+                const img = document.createElement('img');
+                img.src = `https://flagcdn.com/w40/${languageFlags[code]}.png`;
+                img.alt = code;
+                img.className = 'w-8 h-auto'; 
+                item.appendChild(img);
+                item.onclick = () => { changeLanguage(code); toggleLanguageDropdown(); };
+                dropdownList.appendChild(item);
+            });
+        }
+
+        function toggleLanguageDropdown() {
+            const list = document.getElementById('customDropdownList');
+            list.classList.toggle('hidden');
+            if (!list.classList.contains('hidden')) {
+                list.style.display = 'flex';
+            }
+        }
+
+        window.onclick = function(event) {
+            if (!event.target.closest('.absolute.top-4.right-4')) {
+                document.getElementById('customDropdownList').classList.add('hidden');
+            }
+        }
+
+        function changeLanguage(lang) {
+            currentLang = lang;
+            const t = translations[lang] || translations['en'];
+            const btn = document.getElementById('langBtn');
+            btn.innerHTML = `<img src="https://flagcdn.com/w40/${languageFlags[lang] || 'gb'}.png" alt="${lang}" class="w-6 h-auto">`;
+            if (lang === 'ar' || lang === 'fa') { document.body.setAttribute('dir', 'rtl'); } else { document.body.setAttribute('dir', 'ltr'); }
+            document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (t[key]) el.innerText = t[key]; });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { const key = el.getAttribute('data-i18n-placeholder'); if (t[key]) el.placeholder = t[key]; });
+            if (currentMatch) { renderMatch(); }
+        }
+
+        function swapTeams() {
+            const teamAInput = document.getElementById('teamAInput');
+            const teamBInput = document.getElementById('teamBInput');
+            const temp = teamAInput.value;
+            teamAInput.value = teamBInput.value;
+            teamBInput.value = temp;
+        }
+
+        function hexToRgb(hex) {
+            var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+        }
+
+        function colorDistance(hex1, hex2) {
+            const rgb1 = hexToRgb(hex1);
+            const rgb2 = hexToRgb(hex2);
+            if (!rgb1 || !rgb2) return 1000; 
+            return Math.sqrt(Math.pow(rgb1.r - rgb2.r, 2) + Math.pow(rgb1.g - rgb2.g, 2) + Math.pow(rgb1.b - rgb2.b, 2));
+        }
+
+        function getTeamColors(teamName) {
+            const normalized = teamName.trim().toLowerCase();
+            if (teamDatabase[normalized]) { return { ...teamDatabase[normalized], isReal: true }; }
+            const rand = randomColorPalette[Math.floor(Math.random() * randomColorPalette.length)];
+            return { ...rand, isReal: false };
+        }
+
+        function resolveColorConflict(colorsA, colorsB) {
+            const threshold = 100; 
+            if (colorDistance(colorsA.p, colorsB.p) < threshold) { return { p: colorsB.s, s: colorsB.p, isReal: colorsB.isReal }; }
+            return colorsB;
+        }
+
+        function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+        function generatePossession(goalsA, goalsB) {
+            let posA, posB;
+            let isValid = false;
+            
+            while (!isValid) {
+                const roll = Math.random() * 100;
+                let range;
+                if (roll < 23) range = [45, 55];
+                else if (roll < 48) range = [40, 45]; 
+                else if (roll < 72) range = [35, 40];
+                else if (roll < 88) range = [30, 35];
+                else if (roll < 95) range = [25, 30];
+                else if (roll < 97) range = [20, 25];
+                else if (roll < 98.5) range = [15, 20];
+                else if (roll < 99.5) range = [10, 15];
+                else if (roll < 99.9) range = [5, 10];
+                else range = [0, 5];
+
+                const val = Math.floor(Math.random() * (range[1] - range[0])) + range[0];
+                const low = val;
+                const high = 100 - val;
+
+                if (Math.random() < 0.5) { posA = low; posB = high; } else { posA = high; posB = low; }
+
+                isValid = true;
+                if (goalsA > goalsB) {
+                    if (posA < 20) { if (posB >= 20) { const temp = posA; posA = posB; posB = temp; } else { isValid = false; } }
+                } else if (goalsB > goalsA) {
+                     if (posB < 20) { if (posA >= 20) { const temp = posA; posA = posB; posB = temp; } else { isValid = false; } }
+                } else { 
+                    if (posA < 15 || posB < 15) isValid = false;
+                }
+            }
+            return { posA, posB };
+        }
+
+        function generateTeamStats(goalsScored, opponentGoals, possessionPct) {
+            let shotsOnTarget = goalsScored + randomInt(1, 5); 
+            if (goalsScored === 0) shotsOnTarget = randomInt(0, 3);
+            let totalShots = shotsOnTarget + randomInt(2, 8);
+            
+            const posFactor = possessionPct / 50; 
+            let basePass = randomInt(300, 400); 
+            let totalPasses = Math.floor(basePass * posFactor);
+            totalPasses += (totalShots * 2);
+            
+            let passSuccessRate = randomInt(68, 92);
+            let successfulPasses = Math.floor(totalPasses * (passSuccessRate / 100));
+            let totalCrosses = randomInt(8, 30);
+            let successfulCrosses = Math.floor(totalCrosses * (randomInt(15, 35) / 100));
+            let offsides = randomInt(0, 5);
+            let corners = Math.floor(totalShots / 3) + randomInt(-1, 3);
+            if (corners < 0) corners = 0;
+            let fouls = randomInt(8, 20);
+            let yellowCards = Math.floor(fouls / randomInt(4, 7));
+            if (randomInt(0, 10) > 8) yellowCards += 1;
+            let redCards = 0;
+            if (Math.random() < 0.05) redCards = 1;
+            if (Math.random() < 0.01) redCards = 2;
+
+            return { goals: goalsScored, shotsOnTarget, totalShots, totalPasses, successfulPasses, passSuccessRate, totalCrosses, successfulCrosses, offsides, corners, fouls, yellowCards, redCards };
+        }
+
+        function generateHalfTimeStats(fullStats, fullGoals, htGoals) {
+            const ratio = () => 0.40 + (Math.random() * 0.20); 
+            const missedShotsOnTarget = fullStats.shotsOnTarget - fullGoals;
+            const htMissedShotsOnTarget = Math.floor(missedShotsOnTarget * ratio());
+            const shotsOnTarget = htGoals + htMissedShotsOnTarget;
+            const missedShots = fullStats.totalShots - fullStats.shotsOnTarget;
+            const htMissedShots = Math.floor(missedShots * ratio());
+            const totalShots = shotsOnTarget + htMissedShots;
+            const totalPasses = Math.floor(fullStats.totalPasses * ratio());
+            let rateVar = (Math.random() * 10) - 5; 
+            let htRate = Math.min(100, Math.max(0, fullStats.passSuccessRate + rateVar));
+            const successfulPasses = Math.floor(totalPasses * (htRate / 100));
+            const passSuccessRate = Math.round((successfulPasses / totalPasses) * 100) || 0;
+            const corners = Math.floor(fullStats.corners * ratio());
+            const fouls = Math.floor(fullStats.fouls * ratio());
+            const offsides = Math.floor(fullStats.offsides * ratio());
+            const totalCrosses = Math.floor(fullStats.totalCrosses * ratio());
+            const crossSuccessRate = fullStats.successfulCrosses / fullStats.totalCrosses || 0;
+            const successfulCrosses = Math.floor(totalCrosses * crossSuccessRate);
+            let yellowCards = 0;
+            for(let i=0; i<fullStats.yellowCards; i++) { if(Math.random() < 0.40) yellowCards++; }
+            let redCards = 0;
+            for(let i=0; i<fullStats.redCards; i++) { if(Math.random() < 0.30) redCards++; }
+
+            return { goals: htGoals, shotsOnTarget, totalShots, totalPasses, successfulPasses, passSuccessRate, totalCrosses, successfulCrosses, offsides, corners, fouls, yellowCards, redCards };
+        }
+
+        function calculateHalfTimeScore(ftGoalsA, ftGoalsB) {
+            let htA = 0;
+            for(let i=0; i<ftGoalsA; i++) { if(Math.random() > 0.55) htA++; }
+            let htB = 0;
+            for(let i=0; i<ftGoalsB; i++) { if(Math.random() > 0.55) htB++; }
+            return { a: htA, b: htB };
+        }
+
+        function generateMatch() {
+            const t = translations[currentLang] || translations['en'];
+            const teamAInput = document.getElementById('teamAInput');
+            const teamBInput = document.getElementById('teamBInput');
+            const teamA = teamAInput.value || (currentLang === 'tr' ? 'Ev Sahibi' : t.homePlaceholder);
+            const teamB = teamBInput.value || (currentLang === 'tr' ? 'Deplasman' : t.awayPlaceholder);
+            let colorsA = getTeamColors(teamAInput.value || "");
+            let colorsB = getTeamColors(teamBInput.value || "");
+            colorsB = resolveColorConflict(colorsA, colorsB);
+            const diffRoll = Math.random();
+            let diff = 0;
+            if (diffRoll < 0.24) diff = 0; 
+            else if (diffRoll < 0.62) diff = 1; 
+            else if (diffRoll < 0.85) diff = 2; 
+            else if (diffRoll < 0.95) diff = 3;
+            else diff = 4 + Math.floor(Math.random() * 3);
+            const loserGoalsRoll = Math.random();
+            let loserGoals = 0;
+            if (loserGoalsRoll < 0.45) loserGoals = 0;
+            else if (loserGoalsRoll < 0.80) loserGoals = 1;
+            else if (loserGoalsRoll < 0.95) loserGoals = 2;
+            else loserGoals = 3;
+            const winnerGoals = loserGoals + diff;
+            let goalsA, goalsB;
+            if (diff === 0) {
+                goalsA = loserGoals; 
+                if(Math.random() < 0.4) goalsA = 0; 
+                goalsB = goalsA;
+            } else {
+                if (Math.random() < 0.5) { goalsA = winnerGoals; goalsB = loserGoals; } else { goalsA = loserGoals; goalsB = winnerGoals; }
+            }
+            const htScore = calculateHalfTimeScore(goalsA, goalsB);
+            const possession = generatePossession(goalsA, goalsB);
+            const statsA = generateTeamStats(goalsA, goalsB, possession.posA);
+            const statsB = generateTeamStats(goalsB, goalsA, possession.posB);
+            const statsA_HT = generateHalfTimeStats(statsA, goalsA, htScore.a);
+            const statsB_HT = generateHalfTimeStats(statsB, goalsB, htScore.b);
+            const matchData = {
+                id: Date.now(), teamA, teamB, goalsA, goalsB, ht: htScore, 
+                statsA: { ...statsA, possession: possession.posA }, 
+                statsB: { ...statsB, possession: possession.posB },
+                statsA_HT: { ...statsA_HT, possession: possession.posA }, 
+                statsB_HT: { ...statsB_HT, possession: possession.posB },
+                colorsA, colorsB,
+                timestamp: new Date().toLocaleTimeString(currentLang === 'tr' ? 'tr-TR' : 'en-US', {hour: '2-digit', minute:'2-digit'})
+            };
+            matchHistory.unshift(matchData);
+            if (matchHistory.length > 20) matchHistory.pop();
+            updateHistoryUI();
+            currentMatch = matchData;
+            currentMode = 'ft';
+            document.getElementById('aiContentArea').classList.add('hidden');
+            document.getElementById('aiText').innerHTML = '';
+            renderMatch();
+        }
+
+        function showAiLoading(textKey) {
+            const t = translations[currentLang] || translations['en'];
+            const contentArea = document.getElementById('aiContentArea');
+            const loadingArea = document.getElementById('aiLoading');
+            const loadingText = document.getElementById('aiLoadingText');
+            const textArea = document.getElementById('aiText');
+            contentArea.classList.remove('hidden');
+            loadingArea.classList.remove('hidden');
+            loadingArea.classList.add('flex');
+            textArea.classList.add('hidden');
+            textArea.innerHTML = '';
+            loadingText.innerText = t[textKey];
+        }
+
+        function displayAiText(text) {
+             const loadingArea = document.getElementById('aiLoading');
+             const textArea = document.getElementById('aiText');
+             loadingArea.classList.add('hidden');
+             loadingArea.classList.remove('flex');
+             let formattedText = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+             textArea.innerHTML = formattedText;
+             textArea.classList.remove('hidden');
+        }
+
+        function getJournalist(lang) {
+            return journalists[Math.floor(Math.random() * journalists.length)];
+        }
+
+        async function generateCommentary() {
+            if (!currentMatch) return;
+            showAiLoading('aiLoadingCommentary');
+            const statsA = currentMatch.statsA;
+            const statsB = currentMatch.statsB;
+
+            const journalist = getJournalist(currentLang);
+            const prefix = `${journalist.broadcaster}, ${journalist.country}`;
+
+            const prompt = `
+            Act as a football reporter for ${journalist.broadcaster} (${journalist.country}).
+            Write a short, engaging match summary (approx 3-4 sentences) for the following match.
+            
+            Target Language: ${currentLang} (Must output in this language).
+            
+            Match: ${currentMatch.teamA} vs ${currentMatch.teamB}
+            Score: ${currentMatch.goalsA} - ${currentMatch.goalsB} (Half Time: ${currentMatch.ht.a}-${currentMatch.ht.b})
+            
+            Key Stats:
+            - Possession: ${statsA.possession}% vs ${statsB.possession}%
+            - Team A Cards: ${statsA.yellowCards} Yellow, ${statsA.redCards} Red.
+            - Team B Cards: ${statsB.yellowCards} Yellow, ${statsB.redCards} Red.
+            - Total Red Cards: ${statsA.redCards + statsB.redCards}.
+            - Shots: ${statsA.totalShots} (${statsA.shotsOnTarget}) vs ${statsB.totalShots} (${statsB.shotsOnTarget}).
+            
+            Tone: Professional, journalistic, objective.
+            
+            Instructions:
+            1. Translate the country name '${journalist.country}' into the target language ${currentLang} for the prefix.
+            2. Start the response EXACTLY with the broadcaster name and the translated country name in bold, followed by a colon. 
+               Format: "**${journalist.broadcaster}, [Translated Country Name]**: "
+            3. Then write the commentary.
+            `;
+
+            await callGemini(prompt);
+        }
+
+        async function generateManagerReaction() {
+            if (!currentMatch) return;
+            showAiLoading('aiLoadingManager');
+
+            const statsA = currentMatch.statsA;
+            const statsB = currentMatch.statsB;
+            let speaker = currentMatch.teamA;
+            let resultStatus = "drew";
+            let winner = null;
+            if (currentMatch.goalsA > currentMatch.goalsB) {
+                winner = currentMatch.teamA;
+                resultStatus = "won";
+            } else if (currentMatch.goalsB > currentMatch.goalsA) {
+                winner = currentMatch.teamB;
+                resultStatus = "won";
+            } else {
+                resultStatus = "draw";
+            }
+
+            let prompt = "";
+            const journalist = getJournalist(currentLang);
+
+            if (resultStatus === "won") {
+                const speakerStats = winner === currentMatch.teamA ? statsA : statsB;
+                const isPositive = Math.random() < 0.75;
+                const sentimentInstruction = isPositive 
+                    ? "FORCE POSITIVE TONE. Praise the team's winning performance." 
+                    : "FORCE CRITICAL TONE despite the win. Focus on flaws.";
+
+                prompt = `
+                Simulate a post-match press conference.
+                SENTIMENT: ${sentimentInstruction}
+                Journalist: ${journalist.name} from ${journalist.broadcaster} (${journalist.country}).
+                Manager of: ${winner} (Winner).
+                Match Score: ${currentMatch.goalsA}-${currentMatch.goalsB}.
+                Possession: ${speakerStats.possession}%.
+                
+                Instructions:
+                1. Translate journalist's country and manager title to ${currentLang}.
+                2. Journalist asks a question based on SENTIMENT.
+                3. Manager answers based on SENTIMENT.
+                
+                Output Format:
+                **${journalist.name} (${journalist.broadcaster}, [Country])**: [Question]
+                
+                **[Manager Title] (${winner})**: [Answer]
+                
+                Language: ${currentLang}
+                `;
+            } else {
+                const journalist1 = getJournalist(currentLang);
+                let journalist2 = getJournalist(currentLang);
+                if (journalist1.name === journalist2.name) journalist2 = journalists[Math.floor(Math.random() * journalists.length)];
+                
+                const sentiment1 = Math.random() < 0.5 ? "POSITIVE" : "NEGATIVE";
+                const sentiment2 = Math.random() < 0.5 ? "POSITIVE" : "NEGATIVE";
+
+                prompt = `
+                Simulate a post-match press conference with BOTH managers after a DRAW.
+                Match: ${currentMatch.teamA} ${currentMatch.goalsA} - ${currentMatch.goalsB} ${currentMatch.teamB}.
+                
+                INTERVIEW 1:
+                Journalist: ${journalist1.name} from ${journalist1.broadcaster} (${journalist1.country}).
+                Manager of: ${currentMatch.teamA} (Home).
+                Sentiment: ${sentiment1}.
+                
+                INTERVIEW 2:
+                Journalist: ${journalist2.name} from ${journalist2.broadcaster} (${journalist2.country}).
+                Manager of: ${currentMatch.teamB} (Away).
+                Sentiment: ${sentiment2}.
+                
+                Instructions:
+                1. Translate countries and manager titles to ${currentLang}.
+                2. Generate Question and Answer for Home team first, then Away team.
+                
+                Output Format:
+                **${journalist1.name} (${journalist1.broadcaster}, [Country])**: [Question]
+                
+                **[Manager Title] (${currentMatch.teamA})**: [Answer]
+                
+                <br><br>
+                
+                **${journalist2.name} (${journalist2.broadcaster}, [Country])**: [Question]
+                
+                **[Manager Title] (${currentMatch.teamB})**: [Answer]
+                
+                Language: ${currentLang}
+                `;
+            }
+
+            await callGemini(prompt);
+        }
+
+        async function callGemini(prompt) {
+             try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data = await response.json();
+                const text = data.candidates[0].content.parts[0].text;
+                displayAiText(text);
+            } catch (error) {
+                console.error("Error:", error);
+                displayAiText("Error generating content. Please check API key and try again.");
+            }
+        }
+
+        function switchStatsMode(mode) {
+            if(!currentMatch || currentMode === mode) return;
+            currentMode = mode;
+            renderMatch();
+        }
+
+        function updateHistoryUI() {
+            const listEl = document.getElementById('historyList');
+            listEl.innerHTML = '';
+            matchHistory.forEach((match) => {
+                const item = document.createElement('div');
+                let scoreColor = match.goalsA > match.goalsB ? "text-yellow-400" : (match.goalsB > match.goalsA ? "text-red-400" : "text-gray-300");
+                item.className = "p-3 rounded-lg bg-green-900 hover:bg-green-800 cursor-pointer transition-all border-2 border-white hover:border-yellow-500 group";
+                item.onclick = () => { currentMatch = match; currentMode = 'ft'; renderMatch(); document.getElementById('aiContentArea').classList.add('hidden'); };
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs text-green-300 font-mono">${match.timestamp}</span>
+                        <span class="text-sm font-bold font-oswald ${scoreColor}">${match.goalsA} - ${match.goalsB}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="truncate w-20 text-right ${match.goalsA > match.goalsB ? 'text-white font-bold' : 'text-green-300'}">${match.teamA}</span>
+                        <span class="text-green-500 mx-1">vs</span>
+                        <span class="truncate w-20 text-left ${match.goalsB > match.goalsA ? 'text-white font-bold' : 'text-green-300'}">${match.teamB}</span>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function renderMatch() {
+            if(!currentMatch) return;
+            const data = currentMatch;
+            const t = translations[currentLang] || translations['en'];
+            const ftContainer = document.getElementById('ftScoreContainer');
+            const htContainer = document.getElementById('htScoreContainer');
+            const modeLabel = document.getElementById('statsModeLabel');
+            if(currentMode === 'ft') {
+                ftContainer.classList.add('score-active'); ftContainer.classList.remove('score-inactive');
+                htContainer.classList.add('score-inactive'); htContainer.classList.remove('score-active');
+                modeLabel.innerText = t.clickHint; modeLabel.classList.remove('opacity-0');
+            } else {
+                ftContainer.classList.add('score-inactive'); ftContainer.classList.remove('score-active');
+                htContainer.classList.add('score-active'); htContainer.classList.remove('score-inactive');
+                modeLabel.innerText = t.htModeLabel; modeLabel.classList.remove('opacity-0');
+            }
+            const statsA = currentMode === 'ft' ? data.statsA : data.statsA_HT;
+            const statsB = currentMode === 'ft' ? data.statsB : data.statsB_HT;
+            const teamAEl = document.getElementById('displayTeamA');
+            const teamBEl = document.getElementById('displayTeamB');
+            teamAEl.innerText = data.teamA; teamAEl.style.color = data.colorsA.p; teamAEl.style.textShadow = `0 0 10px ${data.colorsA.s}, 2px 2px 0 ${data.colorsA.s}`;
+            teamBEl.innerText = data.teamB; teamBEl.style.color = data.colorsB.p; teamBEl.style.textShadow = `0 0 10px ${data.colorsB.s}, 2px 2px 0 ${data.colorsB.s}`;
+            document.getElementById('scoreA').innerText = data.goalsA;
+            document.getElementById('scoreB').innerText = data.goalsB;
+            const htText = document.querySelector('#htScoreContainer span[data-i18n="htLabel"]');
+            if(htText) htText.innerText = t.htLabel;
+            document.getElementById('htScore').innerText = `${data.ht.a}-${data.ht.b}`;
+            document.getElementById('shotsA').innerText = statsA.totalShots; document.getElementById('targetA').innerText = statsA.shotsOnTarget; document.getElementById('passesA').innerText = `${statsA.totalPasses} / ${statsA.successfulPasses}`; document.getElementById('passRateA').innerText = `%${statsA.passSuccessRate}`; document.getElementById('cornerA').innerText = statsA.corners; document.getElementById('crossA').innerText = `${statsA.totalCrosses} / ${statsA.successfulCrosses}`; document.getElementById('foulA').innerText = statsA.fouls; document.getElementById('yellowA').innerText = statsA.yellowCards; document.getElementById('offsideA').innerText = statsA.offsides;
+            document.getElementById('shotsB').innerText = statsB.totalShots; document.getElementById('targetB').innerText = statsB.shotsOnTarget; document.getElementById('passesB').innerText = `${statsB.totalPasses} / ${statsB.successfulPasses}`; document.getElementById('passRateB').innerText = `%${statsB.passSuccessRate}`; document.getElementById('cornerB').innerText = statsB.corners; document.getElementById('crossB').innerText = `${statsB.totalCrosses} / ${statsB.successfulCrosses}`; document.getElementById('foulB').innerText = statsB.fouls; document.getElementById('yellowB').innerText = statsB.yellowCards; document.getElementById('offsideB').innerText = statsB.offsides;
+            
+            // Update Possession
+            document.getElementById('posA').innerText = `%${statsA.possession}`;
+            document.getElementById('posB').innerText = `%${statsB.possession}`;
+
+            const redA = document.getElementById('redA'); const redB = document.getElementById('redB');
+            if(statsA.redCards > 0) { redA.innerText = statsA.redCards; redA.classList.remove('hidden'); } else { redA.classList.add('hidden'); }
+            if(statsB.redCards > 0) { redB.innerText = statsB.redCards; redB.classList.remove('hidden'); } else { redB.classList.add('hidden'); }
+            const resultArea = document.getElementById('resultArea');
+            resultArea.classList.remove('hidden');
+            setTimeout(() => { resultArea.classList.remove('opacity-0'); }, 50);
+        }
+        
+        initDropdown();
+        changeLanguage('en');
+    </script>
+</body>
+</html>
