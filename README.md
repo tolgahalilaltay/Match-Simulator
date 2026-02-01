@@ -24,7 +24,7 @@ A sophisticated web-based football match simulator that generates realistic matc
 5.  Click **"GENERATE"** to start the simulation!
 
 ## 📸 Preview
-![Match Simulator Screenshot](https://via.placeholder.com/800x400?text=Match+Simulator+Preview) 
+![Match Simulator Screenshot](screenshot.jpeg)
 *(Note: Replace this placeholder with a real screenshot of your app once hosted!)*
 
 ## ⚖️ License
